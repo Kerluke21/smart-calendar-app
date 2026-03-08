@@ -6,6 +6,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import Modal from 'react-modal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { saveAs } from 'file-saver';
 
 Modal.setAppElement('#root');
 
@@ -248,6 +249,61 @@ const Calendar: React.FC = () => {
     doc.save('calendar-events.pdf');
   };
 
+  const exportToCSV = () => {
+    // Create CSV header
+    const headers = ['Title', 'Date', 'Category', 'Location', 'Description'];
+    
+    // Convert events to CSV rows
+    const rows = events.map(event => [
+      event.title,
+      event.start,
+      event.category,
+      event.location || '',
+      event.description || ''
+    ]);
+    
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+    
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+    saveAs(blob, `calendar-events-${new Date().toISOString().split('T')[0]}.csv`);
+  };
+
+  const exportToICal = () => {
+    // Create iCal format
+    let icalContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Smart Calendar//EN',
+      'CALSCALE:GREGORIAN'
+    ];
+    
+    events.forEach(event => {
+      const dateStr = event.start.replace(/-/g, '');
+      const eventLines = [
+        'BEGIN:VEVENT',
+        `UID:${event.id}@smart-calendar`,
+        `DTSTART:${dateStr}`,
+        `SUMMARY:${event.title}`,
+        event.location ? `LOCATION:${event.location}` : '',
+        event.description ? `DESCRIPTION:${event.description}` : '',
+        `CATEGORIES:${event.category}`,
+        'END:VEVENT'
+      ].filter(line => line !== '');
+      
+      icalContent = icalContent.concat(eventLines);
+    });
+    
+    icalContent.push('END:VCALENDAR');
+    
+    const blob = new Blob([icalContent.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+    saveAs(blob, `calendar-${new Date().toISOString().split('T')[0]}.ics`);
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && e.ctrlKey) {
       saveEvent();
@@ -288,6 +344,44 @@ const Calendar: React.FC = () => {
         
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
+            onClick={exportToCSV}
+            style={{
+              padding: '10px 20px',
+              background: '#41b883',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px'
+            }}
+            title="Export as CSV (Excel)"
+          >
+            📊 CSV
+          </button>
+          
+          <button
+            onClick={exportToICal}
+            style={{
+              padding: '10px 20px',
+              background: '#e53e3e',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px'
+            }}
+            title="Export as iCal (Google/Apple Calendar)"
+          >
+            📅 iCal
+          </button>
+          
+          <button
             onClick={exportToPDF}
             style={{
               padding: '10px 20px',
@@ -302,7 +396,7 @@ const Calendar: React.FC = () => {
               gap: '5px'
             }}
           >
-            📄 Export PDF
+            📄 PDF
           </button>
           
           <button
