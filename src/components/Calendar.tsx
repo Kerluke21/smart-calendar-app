@@ -7,6 +7,7 @@ import Modal from 'react-modal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { saveAs } from 'file-saver';
+import axios from 'axios';
 
 Modal.setAppElement('#root');
 
@@ -19,6 +20,11 @@ interface Event {
   category: string;
   description?: string;
   location?: string;
+  weather?: {
+    temp: number;
+    condition: string;
+    icon: string;
+  };
 }
 
 const Calendar: React.FC = () => {
@@ -63,6 +69,8 @@ const Calendar: React.FC = () => {
   const [newEventLocation, setNewEventLocation] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('work');
   const [stats, setStats] = useState({ work: 0, personal: 0, health: 0 });
+  const [weatherApiKey] = useState<string>('87efb5887e7ee17e71bc4c8c0c1f5bc8');
+  const [isLoadingWeather, setIsLoadingWeather] = useState(false);
 
   // Save events to localStorage
   useEffect(() => {
@@ -116,6 +124,75 @@ const Calendar: React.FC = () => {
     mutedText: '#666666'
   };
 
+  // Fetch weather for a location
+    const fetchWeather = async (location: string, date: string) => {
+    if (!location || location === 'Zoom' || location === 'Starbucks') return null;
+    
+    setIsLoadingWeather(true);
+    try {
+      console.log('Fetching weather for:', location);
+      
+      // Use HTTPS URLs
+      const geoResponse = await axios.get(
+        `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(location)}&limit=1&appid=${weatherApiKey}`
+      );
+      
+      console.log('Geo response:', geoResponse.data);
+      
+      if (geoResponse.data.length === 0) {
+        console.log('No location found');
+        return null;
+      }
+      
+      const { lat, lon } = geoResponse.data[0];
+      console.log('Coordinates:', lat, lon);
+      
+      // Get weather forecast
+      const weatherResponse = await axios.get(
+        `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${weatherApiKey}`
+      );
+      
+      console.log('Weather response:', weatherResponse.data);
+      
+      // Find forecast for the specific date
+      const targetDate = new Date(date).toISOString().split('T')[0];
+      console.log('Looking for date:', targetDate);
+      
+      // Look for any forecast on that day
+      const forecast = weatherResponse.data.list.find((item: any) => 
+        item.dt_txt.includes(targetDate)
+      );
+      
+      if (forecast) {
+        console.log('Found forecast:', forecast);
+        return {
+          temp: Math.round(forecast.main.temp),
+          condition: forecast.weather[0].description,
+          icon: forecast.weather[0].icon
+        };
+      } else {
+        console.log('No forecast for that date');
+        // Return first available forecast as fallback
+        if (weatherResponse.data.list.length > 0) {
+          const first = weatherResponse.data.list[0];
+          return {
+            temp: Math.round(first.main.temp),
+            condition: first.weather[0].description,
+            icon: first.weather[0].icon
+          };
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching weather:', error);
+      if (axios.isAxiosError(error)) {
+        console.log('API Error details:', error.response?.data);
+      }
+    } finally {
+      setIsLoadingWeather(false);
+    }
+    return null;
+  };
+
   const handleDateClick = (arg: any) => {
     setSelectedDate(arg.dateStr);
     setSelectedEvent(null);
@@ -139,13 +216,22 @@ const Calendar: React.FC = () => {
     }
   };
 
-  const handleEventDrop = (arg: any) => {
+  const handleEventDrop = async (arg: any) => {
+    const event = events.find(e => e.id === arg.event.id);
+    let weather = event?.weather;
+    
+    // Fetch new weather if location exists and is valid
+    if (event?.location && !['Zoom', 'Starbucks'].includes(event.location)) {
+      weather = await fetchWeather(event.location, arg.event.startStr.split('T')[0]) || undefined;
+    }
+    
     const updatedEvents = events.map(event => {
       if (event.id === arg.event.id) {
         return {
           ...event,
           start: arg.event.startStr.split('T')[0],
-          end: arg.event.endStr ? arg.event.endStr.split('T')[0] : undefined
+          end: arg.event.endStr ? arg.event.endStr.split('T')[0] : undefined,
+          weather: weather
         };
       }
       return event;
@@ -167,8 +253,15 @@ const Calendar: React.FC = () => {
     setEvents(updatedEvents);
   };
 
-  const saveEvent = () => {
+  const saveEvent = async () => {
     if (newEventTitle.trim()) {
+      let weather: { temp: number; condition: string; icon: string; } | undefined = undefined;
+      
+      // Fetch weather if location is provided and not a placeholder
+      if (newEventLocation && !['Zoom', 'Starbucks'].includes(newEventLocation)) {
+        weather = await fetchWeather(newEventLocation, selectedDate) || undefined;
+      }
+      
       if (selectedEvent) {
         const updatedEvents = events.map(event => {
           if (event.id === selectedEvent.id) {
@@ -178,7 +271,8 @@ const Calendar: React.FC = () => {
               description: newEventDescription,
               location: newEventLocation,
               category: selectedCategory,
-              color: categoryColors[selectedCategory as keyof typeof categoryColors]
+              color: categoryColors[selectedCategory as keyof typeof categoryColors],
+              weather: weather
             };
           }
           return event;
@@ -192,7 +286,8 @@ const Calendar: React.FC = () => {
           description: newEventDescription,
           location: newEventLocation,
           color: categoryColors[selectedCategory as keyof typeof categoryColors],
-          category: selectedCategory
+          category: selectedCategory,
+          weather: weather
         };
         setEvents([...events, newEvent]);
       }
@@ -229,17 +324,18 @@ const Calendar: React.FC = () => {
     doc.text(`Total Events: ${events.length}`, 14, 48);
     doc.text(`Work: ${stats.work} | Personal: ${stats.personal} | Health: ${stats.health}`, 14, 56);
     
-    // Events Table
+    // Events Table with Weather
     const tableData = events.map(event => [
       event.title,
       event.start,
       event.category,
       event.location || '-',
+      event.weather ? `${event.weather.temp}°C ${event.weather.condition}` : '-',
       event.description || '-'
     ]);
     
     autoTable(doc, {
-      head: [['Title', 'Date', 'Category', 'Location', 'Description']],
+      head: [['Title', 'Date', 'Category', 'Location', 'Weather', 'Description']],
       body: tableData,
       startY: 65,
       styles: { fontSize: 8 },
@@ -250,31 +346,27 @@ const Calendar: React.FC = () => {
   };
 
   const exportToCSV = () => {
-    // Create CSV header
-    const headers = ['Title', 'Date', 'Category', 'Location', 'Description'];
+    const headers = ['Title', 'Date', 'Category', 'Location', 'Weather', 'Description'];
     
-    // Convert events to CSV rows
     const rows = events.map(event => [
       event.title,
       event.start,
       event.category,
       event.location || '',
+      event.weather ? `${event.weather.temp}°C ${event.weather.condition}` : '',
       event.description || ''
     ]);
     
-    // Combine headers and rows
     const csvContent = [
       headers.join(','),
       ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
     ].join('\n');
     
-    // Create and download file
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
     saveAs(blob, `calendar-events-${new Date().toISOString().split('T')[0]}.csv`);
   };
 
   const exportToICal = () => {
-    // Create iCal format
     let icalContent = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
@@ -288,7 +380,7 @@ const Calendar: React.FC = () => {
         'BEGIN:VEVENT',
         `UID:${event.id}@smart-calendar`,
         `DTSTART:${dateStr}`,
-        `SUMMARY:${event.title}`,
+        `SUMMARY:${event.title}${event.weather ? ` (${event.weather.temp}°C)` : ''}`,
         event.location ? `LOCATION:${event.location}` : '',
         event.description ? `DESCRIPTION:${event.description}` : '',
         `CATEGORIES:${event.category}`,
@@ -310,6 +402,11 @@ const Calendar: React.FC = () => {
     }
   };
 
+  // Weather icon mapping
+  const getWeatherIcon = (iconCode: string) => {
+    return `https://openweathermap.org/img/wn/${iconCode}.png`;
+  };
+
   return (
     <div style={{ 
       minHeight: '100vh',
@@ -317,7 +414,7 @@ const Calendar: React.FC = () => {
       padding: '20px',
       transition: 'all 0.3s ease'
     }}>
-      {/* Header with Dark Mode Toggle and Export */}
+      {/* Header */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -338,7 +435,7 @@ const Calendar: React.FC = () => {
             Smart Calendar
           </h1>
           <p style={{ color: darkMode ? '#aaaaaa' : '#666666', marginTop: '5px' }}>
-            Your intelligent scheduling assistant
+            Your intelligent scheduling assistant with weather
           </p>
         </div>
         
@@ -511,7 +608,7 @@ const Calendar: React.FC = () => {
         </button>
       </div>
 
-      {/* Calendar Container */}
+      {/* Calendar Container with Weather Icons */}
       <div style={{
         maxWidth: '1200px',
         margin: '0 auto',
@@ -532,13 +629,33 @@ const Calendar: React.FC = () => {
           initialView="dayGridMonth"
           editable={true}
           selectable={true}
-          events={getFilteredEvents()}
+          events={getFilteredEvents().map(event => ({
+            ...event,
+            title: event.weather 
+              ? `${event.title} (${event.weather.temp}°C)` 
+              : event.title
+          }))}
           dateClick={handleDateClick}
           eventClick={handleEventClick}
           eventDrop={handleEventDrop}
           eventResize={handleEventResize}
           droppable={true}
           height="auto"
+          eventContent={(arg) => {
+            const event = events.find(e => e.id === arg.event.id);
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px' }}>
+                {event?.weather && (
+                  <img 
+                    src={getWeatherIcon(event.weather.icon)} 
+                    alt={event.weather.condition}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                )}
+                <span style={{ fontSize: '12px' }}>{arg.event.title}</span>
+              </div>
+            );
+          }}
         />
       </div>
 
@@ -593,7 +710,7 @@ const Calendar: React.FC = () => {
         
         <input
           type="text"
-          placeholder="Location (optional)"
+          placeholder="City for weather (e.g., Vancouver, London, Tokyo)"
           value={newEventLocation}
           onChange={(e) => setNewEventLocation(e.target.value)}
           style={{
@@ -607,6 +724,17 @@ const Calendar: React.FC = () => {
             color: darkStyles.text
           }}
         />
+        
+        {isLoadingWeather && (
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '10px', 
+            color: darkStyles.mutedText,
+            fontSize: '14px'
+          }}>
+            Loading weather...
+          </div>
+        )}
         
         <textarea
           placeholder="Description (optional)"
@@ -678,6 +806,32 @@ const Calendar: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {selectedEvent?.weather && (
+          <div style={{
+            padding: '15px',
+            background: darkStyles.secondaryBackground,
+            borderRadius: '8px',
+            margin: '15px 0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '15px'
+          }}>
+            <img 
+              src={getWeatherIcon(selectedEvent.weather.icon)} 
+              alt={selectedEvent.weather.condition}
+              style={{ width: '40px', height: '40px' }}
+            />
+            <div>
+              <div style={{ fontWeight: 'bold', fontSize: '18px' }}>
+                {selectedEvent.weather.temp}°C
+              </div>
+              <div style={{ color: darkStyles.mutedText, textTransform: 'capitalize' }}>
+                {selectedEvent.weather.condition}
+              </div>
+            </div>
+          </div>
+        )}
         
         <div style={{ 
           display: 'flex', 
