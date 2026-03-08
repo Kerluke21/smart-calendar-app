@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -36,8 +36,20 @@ const Calendar: React.FC = () => {
   const [newEventTitle, setNewEventTitle] = useState('');
   const [selectedColor, setSelectedColor] = useState('#3788d8');
 
+  // Focus input when modal opens
+  useEffect(() => {
+    if (modalIsOpen) {
+      setTimeout(() => {
+        const input = document.getElementById('eventTitleInput');
+        if (input) input.focus();
+      }, 100);
+    }
+  }, [modalIsOpen]);
+
   const handleDateClick = (arg: any) => {
     setSelectedDate(arg.dateStr);
+    setNewEventTitle(''); // Clear previous input
+    setSelectedColor('#3788d8'); // Reset to blue
     setModalIsOpen(true);
   };
 
@@ -59,6 +71,12 @@ const Calendar: React.FC = () => {
       setEvents([...events, newEvent]);
       setModalIsOpen(false);
       setNewEventTitle('');
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      addEvent();
     }
   };
 
@@ -100,32 +118,41 @@ const Calendar: React.FC = () => {
             transform: 'translate(-50%, -50%)',
             padding: '30px',
             borderRadius: '15px',
-            minWidth: '400px'
+            minWidth: '400px',
+            zIndex: 1000
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 999
           }
         }}
       >
         <h2 style={{ marginTop: 0, color: '#333' }}>Add Event for {selectedDate}</h2>
         
         <input
+          id="eventTitleInput"
           type="text"
           placeholder="Event title..."
           value={newEventTitle}
           onChange={(e) => setNewEventTitle(e.target.value)}
+          onKeyPress={handleKeyPress}
           style={{
             width: '100%',
             padding: '12px',
             margin: '10px 0',
             border: '2px solid #e0e0e0',
             borderRadius: '8px',
-            fontSize: '16px'
+            fontSize: '16px',
+            outline: 'none'
           }}
+          autoFocus
         />
         
         <div style={{ margin: '15px 0' }}>
           <label style={{ display: 'block', marginBottom: '8px', color: '#666' }}>
             Choose color:
           </label>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {colors.map(color => (
               <button
                 key={color.value}
@@ -135,9 +162,13 @@ const Calendar: React.FC = () => {
                   height: '40px',
                   borderRadius: '50%',
                   backgroundColor: color.value,
-                  border: selectedColor === color.value ? '3px solid #333' : 'none',
-                  cursor: 'pointer'
+                  border: selectedColor === color.value ? '3px solid #333' : '2px solid white',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s'
                 }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
               />
             ))}
           </div>
@@ -151,7 +182,9 @@ const Calendar: React.FC = () => {
               backgroundColor: '#e0e0e0',
               border: 'none',
               borderRadius: '8px',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold'
             }}
           >
             Cancel
@@ -164,7 +197,9 @@ const Calendar: React.FC = () => {
               color: 'white',
               border: 'none',
               borderRadius: '8px',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold'
             }}
           >
             Add Event
