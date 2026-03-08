@@ -16,20 +16,34 @@ interface Event {
 }
 
 const Calendar: React.FC = () => {
-  const [events, setEvents] = useState<Event[]>([
-    {
-      id: '1',
-      title: 'Team Meeting',
-      start: new Date().toISOString().split('T')[0],
-      color: '#3788d8'
-    },
-    {
-      id: '2',
-      title: 'Lunch with Sarah',
-      start: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-      color: '#41b883'
+  // Load events from localStorage on startup
+  const [events, setEvents] = useState<Event[]>(() => {
+    const savedEvents = localStorage.getItem('calendarEvents');
+    if (savedEvents) {
+      return JSON.parse(savedEvents);
     }
-  ]);
+    // Default events if nothing saved
+    return [
+      {
+        id: '1',
+        title: 'Team Meeting',
+        start: new Date().toISOString().split('T')[0],
+        color: '#3788d8'
+      },
+      {
+        id: '2',
+        title: 'Lunch with Sarah',
+        start: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+        color: '#41b883'
+      }
+    ];
+  });
+
+  // Save events to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('calendarEvents', JSON.stringify(events));
+    console.log('Events saved to localStorage'); // For debugging
+  }, [events]);
 
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
@@ -48,8 +62,8 @@ const Calendar: React.FC = () => {
 
   const handleDateClick = (arg: any) => {
     setSelectedDate(arg.dateStr);
-    setNewEventTitle(''); // Clear previous input
-    setSelectedColor('#3788d8'); // Reset to blue
+    setNewEventTitle('');
+    setSelectedColor('#3788d8');
     setModalIsOpen(true);
   };
 
@@ -80,6 +94,13 @@ const Calendar: React.FC = () => {
     }
   };
 
+  // Clear all events (for testing)
+  const clearAllEvents = () => {
+    if (window.confirm('Delete ALL events?')) {
+      setEvents([]);
+    }
+  };
+
   const colors = [
     { name: 'Blue', value: '#3788d8' },
     { name: 'Green', value: '#41b883' },
@@ -90,6 +111,23 @@ const Calendar: React.FC = () => {
 
   return (
     <div>
+      <div style={{ marginBottom: '10px', textAlign: 'right' }}>
+        <button
+          onClick={clearAllEvents}
+          style={{
+            padding: '5px 10px',
+            backgroundColor: '#e53e3e',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontSize: '12px'
+          }}
+        >
+          Clear All Events
+        </button>
+      </div>
+
       <FullCalendar
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         headerToolbar={{
