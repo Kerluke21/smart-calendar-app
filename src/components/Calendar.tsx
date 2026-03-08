@@ -11,8 +11,11 @@ interface Event {
   id: string;
   title: string;
   start: string;
+  end?: string;
   color?: string;
   category: string;
+  description?: string;
+  location?: string;
 }
 
 const Calendar: React.FC = () => {
@@ -27,21 +30,18 @@ const Calendar: React.FC = () => {
         title: 'Team Meeting',
         start: new Date().toISOString().split('T')[0],
         color: '#3788d8',
-        category: 'work'
+        category: 'work',
+        description: 'Weekly sync with engineering team',
+        location: 'Zoom'
       },
       {
         id: '2',
         title: 'Lunch with Sarah',
         start: new Date(Date.now() + 86400000).toISOString().split('T')[0],
         color: '#41b883',
-        category: 'personal'
-      },
-      {
-        id: '3',
-        title: 'Doctor Appointment',
-        start: new Date(Date.now() + 172800000).toISOString().split('T')[0],
-        color: '#e53e3e',
-        category: 'health'
+        category: 'personal',
+        description: 'Catch up over coffee',
+        location: 'Starbucks'
       }
     ];
   });
@@ -49,7 +49,10 @@ const Calendar: React.FC = () => {
   const [filter, setFilter] = useState<string>('all');
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [newEventTitle, setNewEventTitle] = useState('');
+  const [newEventDescription, setNewEventDescription] = useState('');
+  const [newEventLocation, setNewEventLocation] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('work');
   const [stats, setStats] = useState({ work: 0, personal: 0, health: 0 });
 
@@ -66,13 +69,12 @@ const Calendar: React.FC = () => {
     setStats({ work, personal, health });
   }, [events]);
 
-  // Filter events based on selected category
+  // Filter events
   const getFilteredEvents = () => {
     if (filter === 'all') return events;
     return events.filter(e => e.category === filter);
   };
 
-  // Category colors mapping
   const categoryColors = {
     work: '#3788d8',
     personal: '#41b883',
@@ -81,40 +83,106 @@ const Calendar: React.FC = () => {
 
   const handleDateClick = (arg: any) => {
     setSelectedDate(arg.dateStr);
+    setSelectedEvent(null);
     setNewEventTitle('');
+    setNewEventDescription('');
+    setNewEventLocation('');
     setSelectedCategory('work');
     setModalIsOpen(true);
   };
 
   const handleEventClick = (arg: any) => {
-    if (window.confirm(`Delete event "${arg.event.title}"?`)) {
-      const updatedEvents = events.filter(e => e.id !== arg.event.id);
-      setEvents(updatedEvents);
+    const event = events.find(e => e.id === arg.event.id);
+    if (event) {
+      setSelectedEvent(event);
+      setSelectedDate(event.start);
+      setNewEventTitle(event.title);
+      setNewEventDescription(event.description || '');
+      setNewEventLocation(event.location || '');
+      setSelectedCategory(event.category);
+      setModalIsOpen(true);
     }
   };
 
-  const addEvent = () => {
+  // Handle drag and drop event
+  const handleEventDrop = (arg: any) => {
+    const updatedEvents = events.map(event => {
+      if (event.id === arg.event.id) {
+        return {
+          ...event,
+          start: arg.event.startStr.split('T')[0],
+          end: arg.event.endStr ? arg.event.endStr.split('T')[0] : undefined
+        };
+      }
+      return event;
+    });
+    setEvents(updatedEvents);
+  };
+
+  // Handle event resize (for week/day view)
+  const handleEventResize = (arg: any) => {
+    const updatedEvents = events.map(event => {
+      if (event.id === arg.event.id) {
+        return {
+          ...event,
+          start: arg.event.startStr.split('T')[0],
+          end: arg.event.endStr.split('T')[0]
+        };
+      }
+      return event;
+    });
+    setEvents(updatedEvents);
+  };
+
+  const saveEvent = () => {
     if (newEventTitle.trim()) {
-      const newEvent = {
-        id: Date.now().toString(),
-        title: newEventTitle,
-        start: selectedDate,
-        color: categoryColors[selectedCategory as keyof typeof categoryColors],
-        category: selectedCategory
-      };
-      setEvents([...events, newEvent]);
+      if (selectedEvent) {
+        // Update existing event
+        const updatedEvents = events.map(event => {
+          if (event.id === selectedEvent.id) {
+            return {
+              ...event,
+              title: newEventTitle,
+              description: newEventDescription,
+              location: newEventLocation,
+              category: selectedCategory,
+              color: categoryColors[selectedCategory as keyof typeof categoryColors]
+            };
+          }
+          return event;
+        });
+        setEvents(updatedEvents);
+      } else {
+        // Create new event
+        const newEvent = {
+          id: Date.now().toString(),
+          title: newEventTitle,
+          start: selectedDate,
+          description: newEventDescription,
+          location: newEventLocation,
+          color: categoryColors[selectedCategory as keyof typeof categoryColors],
+          category: selectedCategory
+        };
+        setEvents([...events, newEvent]);
+      }
       setModalIsOpen(false);
       setNewEventTitle('');
+      setNewEventDescription('');
+      setNewEventLocation('');
+    }
+  };
+
+  const deleteEvent = () => {
+    if (selectedEvent && window.confirm(`Delete "${selectedEvent.title}"?`)) {
+      const updatedEvents = events.filter(e => e.id !== selectedEvent.id);
+      setEvents(updatedEvents);
+      setModalIsOpen(false);
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') addEvent();
-  };
-
-  const clearAllEvents = () => {
-    if (window.confirm('Delete ALL events?')) {
-      setEvents([]);
+    if (e.key === 'Enter' && e.ctrlKey) {
+      saveEvent();
     }
   };
 
@@ -134,17 +202,14 @@ const Calendar: React.FC = () => {
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{stats.work}</div>
           <div style={{ fontSize: '14px', opacity: 0.9 }}>Work Events</div>
-          <div style={{ width: '50px', height: '4px', background: '#3788d8', margin: '5px auto', borderRadius: '2px' }} />
         </div>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{stats.personal}</div>
           <div style={{ fontSize: '14px', opacity: 0.9 }}>Personal Events</div>
-          <div style={{ width: '50px', height: '4px', background: '#41b883', margin: '5px auto', borderRadius: '2px' }} />
         </div>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{stats.health}</div>
           <div style={{ fontSize: '14px', opacity: 0.9 }}>Health Events</div>
-          <div style={{ width: '50px', height: '4px', background: '#e53e3e', margin: '5px auto', borderRadius: '2px' }} />
         </div>
       </div>
 
@@ -153,7 +218,8 @@ const Calendar: React.FC = () => {
         display: 'flex',
         gap: '10px',
         marginBottom: '20px',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        flexWrap: 'wrap'
       }}>
         <button
           onClick={() => setFilter('all')}
@@ -164,8 +230,7 @@ const Calendar: React.FC = () => {
             background: filter === 'all' ? '#667eea' : '#e0e0e0',
             color: filter === 'all' ? 'white' : '#333',
             cursor: 'pointer',
-            fontWeight: 'bold',
-            transition: 'all 0.3s'
+            fontWeight: 'bold'
           }}
         >
           All Events
@@ -214,7 +279,7 @@ const Calendar: React.FC = () => {
         </button>
       </div>
 
-      {/* Calendar */}
+      {/* Calendar with Drag & Drop */}
       <FullCalendar
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         headerToolbar={{
@@ -228,27 +293,12 @@ const Calendar: React.FC = () => {
         events={getFilteredEvents()}
         dateClick={handleDateClick}
         eventClick={handleEventClick}
+        eventDrop={handleEventDrop}
+        eventResize={handleEventResize}
+        droppable={true}
       />
 
-      {/* Clear All Button */}
-      <div style={{ marginTop: '20px', textAlign: 'right' }}>
-        <button
-          onClick={clearAllEvents}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#e53e3e',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '14px'
-          }}
-        >
-          Clear All Events
-        </button>
-      </div>
-
-      {/* Add Event Modal */}
+      {/* Add/Edit Event Modal */}
       <Modal
         isOpen={modalIsOpen}
         onRequestClose={() => setModalIsOpen(false)}
@@ -262,16 +312,18 @@ const Calendar: React.FC = () => {
             transform: 'translate(-50%, -50%)',
             padding: '30px',
             borderRadius: '15px',
-            minWidth: '400px'
+            minWidth: '500px',
+            maxWidth: '90%'
           }
         }}
       >
-        <h2 style={{ marginTop: 0 }}>Add Event for {selectedDate}</h2>
+        <h2 style={{ marginTop: 0, color: '#333' }}>
+          {selectedEvent ? 'Edit Event' : `Add Event for ${selectedDate}`}
+        </h2>
         
         <input
-          id="eventTitleInput"
           type="text"
-          placeholder="Event title..."
+          placeholder="Event title *"
           value={newEventTitle}
           onChange={(e) => setNewEventTitle(e.target.value)}
           onKeyPress={handleKeyPress}
@@ -286,11 +338,42 @@ const Calendar: React.FC = () => {
           autoFocus
         />
         
+        <input
+          type="text"
+          placeholder="Location (optional)"
+          value={newEventLocation}
+          onChange={(e) => setNewEventLocation(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '12px',
+            margin: '10px 0',
+            border: '2px solid #e0e0e0',
+            borderRadius: '8px',
+            fontSize: '16px'
+          }}
+        />
+        
+        <textarea
+          placeholder="Description (optional)"
+          value={newEventDescription}
+          onChange={(e) => setNewEventDescription(e.target.value)}
+          rows={3}
+          style={{
+            width: '100%',
+            padding: '12px',
+            margin: '10px 0',
+            border: '2px solid #e0e0e0',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontFamily: 'inherit'
+          }}
+        />
+        
         <div style={{ margin: '15px 0' }}>
           <label style={{ display: 'block', marginBottom: '8px', color: '#666' }}>
             Category:
           </label>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button
               onClick={() => setSelectedCategory('work')}
               style={{
@@ -300,7 +383,8 @@ const Calendar: React.FC = () => {
                 color: selectedCategory === 'work' ? 'white' : '#333',
                 border: 'none',
                 borderRadius: '8px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                minWidth: '80px'
               }}
             >
               Work 💼
@@ -314,7 +398,8 @@ const Calendar: React.FC = () => {
                 color: selectedCategory === 'personal' ? 'white' : '#333',
                 border: 'none',
                 borderRadius: '8px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                minWidth: '80px'
               }}
             >
               Personal 🏠
@@ -328,7 +413,8 @@ const Calendar: React.FC = () => {
                 color: selectedCategory === 'health' ? 'white' : '#333',
                 border: 'none',
                 borderRadius: '8px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                minWidth: '80px'
               }}
             >
               Health 🏥
@@ -336,7 +422,30 @@ const Calendar: React.FC = () => {
           </div>
         </div>
         
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+        <div style={{ 
+          display: 'flex', 
+          gap: '10px', 
+          justifyContent: 'flex-end', 
+          marginTop: '20px',
+          borderTop: '1px solid #e0e0e0',
+          paddingTop: '20px'
+        }}>
+          {selectedEvent && (
+            <button
+              onClick={deleteEvent}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#e53e3e',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                marginRight: 'auto'
+              }}
+            >
+              Delete
+            </button>
+          )}
           <button
             onClick={() => setModalIsOpen(false)}
             style={{
@@ -350,7 +459,7 @@ const Calendar: React.FC = () => {
             Cancel
           </button>
           <button
-            onClick={addEvent}
+            onClick={saveEvent}
             style={{
               padding: '10px 20px',
               backgroundColor: '#667eea',
@@ -360,7 +469,7 @@ const Calendar: React.FC = () => {
               cursor: 'pointer'
             }}
           >
-            Add Event
+            {selectedEvent ? 'Update' : 'Add'} Event
           </button>
         </div>
       </Modal>
