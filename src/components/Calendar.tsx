@@ -4,6 +4,8 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import Modal from 'react-modal';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 Modal.setAppElement('#root');
 
@@ -46,6 +48,11 @@ const Calendar: React.FC = () => {
     ];
   });
 
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    const savedMode = localStorage.getItem('darkMode');
+    return savedMode ? JSON.parse(savedMode) : false;
+  });
+
   const [filter, setFilter] = useState<string>('all');
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
@@ -60,6 +67,16 @@ const Calendar: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('calendarEvents', JSON.stringify(events));
   }, [events]);
+
+  // Save dark mode preference
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+    if (darkMode) {
+      document.body.style.backgroundColor = '#1a1a1a';
+    } else {
+      document.body.style.backgroundColor = '#f3f4f6';
+    }
+  }, [darkMode]);
 
   // Calculate statistics
   useEffect(() => {
@@ -79,6 +96,23 @@ const Calendar: React.FC = () => {
     work: '#3788d8',
     personal: '#41b883',
     health: '#e53e3e'
+  };
+
+  // Dark mode styles
+  const darkStyles = darkMode ? {
+    background: '#2d2d2d',
+    color: '#ffffff',
+    secondaryBackground: '#3d3d3d',
+    border: '#4d4d4d',
+    text: '#ffffff',
+    mutedText: '#aaaaaa'
+  } : {
+    background: '#ffffff',
+    color: '#333333',
+    secondaryBackground: '#f5f5f5',
+    border: '#e0e0e0',
+    text: '#333333',
+    mutedText: '#666666'
   };
 
   const handleDateClick = (arg: any) => {
@@ -104,7 +138,6 @@ const Calendar: React.FC = () => {
     }
   };
 
-  // Handle drag and drop event
   const handleEventDrop = (arg: any) => {
     const updatedEvents = events.map(event => {
       if (event.id === arg.event.id) {
@@ -119,7 +152,6 @@ const Calendar: React.FC = () => {
     setEvents(updatedEvents);
   };
 
-  // Handle event resize (for week/day view)
   const handleEventResize = (arg: any) => {
     const updatedEvents = events.map(event => {
       if (event.id === arg.event.id) {
@@ -137,7 +169,6 @@ const Calendar: React.FC = () => {
   const saveEvent = () => {
     if (newEventTitle.trim()) {
       if (selectedEvent) {
-        // Update existing event
         const updatedEvents = events.map(event => {
           if (event.id === selectedEvent.id) {
             return {
@@ -153,7 +184,6 @@ const Calendar: React.FC = () => {
         });
         setEvents(updatedEvents);
       } else {
-        // Create new event
         const newEvent = {
           id: Date.now().toString(),
           title: newEventTitle,
@@ -180,6 +210,44 @@ const Calendar: React.FC = () => {
     }
   };
 
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    
+    // Title
+    doc.setFontSize(20);
+    doc.text('Smart Calendar - Events Report', 14, 22);
+    
+    // Date
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 30);
+    
+    // Summary
+    doc.setFontSize(12);
+    doc.text('Summary:', 14, 40);
+    doc.setFontSize(10);
+    doc.text(`Total Events: ${events.length}`, 14, 48);
+    doc.text(`Work: ${stats.work} | Personal: ${stats.personal} | Health: ${stats.health}`, 14, 56);
+    
+    // Events Table
+    const tableData = events.map(event => [
+      event.title,
+      event.start,
+      event.category,
+      event.location || '-',
+      event.description || '-'
+    ]);
+    
+    autoTable(doc, {
+      head: [['Title', 'Date', 'Category', 'Location', 'Description']],
+      body: tableData,
+      startY: 65,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [102, 126, 234] }
+    });
+    
+    doc.save('calendar-events.pdf');
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && e.ctrlKey) {
       saveEvent();
@@ -187,7 +255,73 @@ const Calendar: React.FC = () => {
   };
 
   return (
-    <div>
+    <div style={{ 
+      minHeight: '100vh',
+      background: darkMode ? '#1a1a1a' : '#f3f4f6',
+      padding: '20px',
+      transition: 'all 0.3s ease'
+    }}>
+      {/* Header with Dark Mode Toggle and Export */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '20px',
+        maxWidth: '1200px',
+        margin: '0 auto 20px auto'
+      }}>
+        <div>
+          <h1 style={{ 
+            fontSize: '36px', 
+            fontWeight: 'bold',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            margin: 0
+          }}>
+            Smart Calendar
+          </h1>
+          <p style={{ color: darkMode ? '#aaaaaa' : '#666666', marginTop: '5px' }}>
+            Your intelligent scheduling assistant
+          </p>
+        </div>
+        
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            onClick={exportToPDF}
+            style={{
+              padding: '10px 20px',
+              background: '#667eea',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px'
+            }}
+          >
+            📄 Export PDF
+          </button>
+          
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            style={{
+              padding: '10px 20px',
+              background: darkMode ? '#ffd700' : '#333333',
+              color: darkMode ? '#333333' : 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold'
+            }}
+          >
+            {darkMode ? '☀️ Light' : '🌙 Dark'}
+          </button>
+        </div>
+      </div>
+
       {/* Statistics Dashboard */}
       <div style={{
         display: 'grid',
@@ -197,7 +331,9 @@ const Calendar: React.FC = () => {
         padding: '20px',
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         borderRadius: '15px',
-        color: 'white'
+        color: 'white',
+        maxWidth: '1200px',
+        margin: '0 auto 20px auto'
       }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{stats.work}</div>
@@ -219,7 +355,9 @@ const Calendar: React.FC = () => {
         gap: '10px',
         marginBottom: '20px',
         justifyContent: 'center',
-        flexWrap: 'wrap'
+        flexWrap: 'wrap',
+        maxWidth: '1200px',
+        margin: '0 auto 20px auto'
       }}>
         <button
           onClick={() => setFilter('all')}
@@ -227,8 +365,8 @@ const Calendar: React.FC = () => {
             padding: '8px 20px',
             borderRadius: '25px',
             border: 'none',
-            background: filter === 'all' ? '#667eea' : '#e0e0e0',
-            color: filter === 'all' ? 'white' : '#333',
+            background: filter === 'all' ? '#667eea' : (darkMode ? '#3d3d3d' : '#e0e0e0'),
+            color: filter === 'all' ? 'white' : (darkMode ? '#ffffff' : '#333'),
             cursor: 'pointer',
             fontWeight: 'bold'
           }}
@@ -241,8 +379,8 @@ const Calendar: React.FC = () => {
             padding: '8px 20px',
             borderRadius: '25px',
             border: 'none',
-            background: filter === 'work' ? '#3788d8' : '#e0e0e0',
-            color: filter === 'work' ? 'white' : '#333',
+            background: filter === 'work' ? '#3788d8' : (darkMode ? '#3d3d3d' : '#e0e0e0'),
+            color: filter === 'work' ? 'white' : (darkMode ? '#ffffff' : '#333'),
             cursor: 'pointer',
             fontWeight: 'bold'
           }}
@@ -255,8 +393,8 @@ const Calendar: React.FC = () => {
             padding: '8px 20px',
             borderRadius: '25px',
             border: 'none',
-            background: filter === 'personal' ? '#41b883' : '#e0e0e0',
-            color: filter === 'personal' ? 'white' : '#333',
+            background: filter === 'personal' ? '#41b883' : (darkMode ? '#3d3d3d' : '#e0e0e0'),
+            color: filter === 'personal' ? 'white' : (darkMode ? '#ffffff' : '#333'),
             cursor: 'pointer',
             fontWeight: 'bold'
           }}
@@ -269,8 +407,8 @@ const Calendar: React.FC = () => {
             padding: '8px 20px',
             borderRadius: '25px',
             border: 'none',
-            background: filter === 'health' ? '#e53e3e' : '#e0e0e0',
-            color: filter === 'health' ? 'white' : '#333',
+            background: filter === 'health' ? '#e53e3e' : (darkMode ? '#3d3d3d' : '#e0e0e0'),
+            color: filter === 'health' ? 'white' : (darkMode ? '#ffffff' : '#333'),
             cursor: 'pointer',
             fontWeight: 'bold'
           }}
@@ -279,24 +417,36 @@ const Calendar: React.FC = () => {
         </button>
       </div>
 
-      {/* Calendar with Drag & Drop */}
-      <FullCalendar
-        plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-        headerToolbar={{
-          left: 'prev,next today',
-          center: 'title',
-          right: 'dayGridMonth,timeGridWeek,timeGridDay'
-        }}
-        initialView="dayGridMonth"
-        editable={true}
-        selectable={true}
-        events={getFilteredEvents()}
-        dateClick={handleDateClick}
-        eventClick={handleEventClick}
-        eventDrop={handleEventDrop}
-        eventResize={handleEventResize}
-        droppable={true}
-      />
+      {/* Calendar Container */}
+      <div style={{
+        maxWidth: '1200px',
+        margin: '0 auto',
+        background: darkStyles.background,
+        borderRadius: '15px',
+        padding: '20px',
+        boxShadow: darkMode ? '0 10px 40px rgba(0,0,0,0.3)' : '0 10px 40px rgba(0,0,0,0.1)',
+        color: darkStyles.text,
+        transition: 'all 0.3s ease'
+      }}>
+        <FullCalendar
+          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+          headerToolbar={{
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+          }}
+          initialView="dayGridMonth"
+          editable={true}
+          selectable={true}
+          events={getFilteredEvents()}
+          dateClick={handleDateClick}
+          eventClick={handleEventClick}
+          eventDrop={handleEventDrop}
+          eventResize={handleEventResize}
+          droppable={true}
+          height="auto"
+        />
+      </div>
 
       {/* Add/Edit Event Modal */}
       <Modal
@@ -313,11 +463,18 @@ const Calendar: React.FC = () => {
             padding: '30px',
             borderRadius: '15px',
             minWidth: '500px',
-            maxWidth: '90%'
+            maxWidth: '90%',
+            background: darkStyles.background,
+            color: darkStyles.text,
+            border: `1px solid ${darkStyles.border}`
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 1000
           }
         }}
       >
-        <h2 style={{ marginTop: 0, color: '#333' }}>
+        <h2 style={{ marginTop: 0, color: darkStyles.text }}>
           {selectedEvent ? 'Edit Event' : `Add Event for ${selectedDate}`}
         </h2>
         
@@ -331,9 +488,11 @@ const Calendar: React.FC = () => {
             width: '100%',
             padding: '12px',
             margin: '10px 0',
-            border: '2px solid #e0e0e0',
+            border: `2px solid ${darkStyles.border}`,
             borderRadius: '8px',
-            fontSize: '16px'
+            fontSize: '16px',
+            background: darkStyles.secondaryBackground,
+            color: darkStyles.text
           }}
           autoFocus
         />
@@ -347,9 +506,11 @@ const Calendar: React.FC = () => {
             width: '100%',
             padding: '12px',
             margin: '10px 0',
-            border: '2px solid #e0e0e0',
+            border: `2px solid ${darkStyles.border}`,
             borderRadius: '8px',
-            fontSize: '16px'
+            fontSize: '16px',
+            background: darkStyles.secondaryBackground,
+            color: darkStyles.text
           }}
         />
         
@@ -362,15 +523,17 @@ const Calendar: React.FC = () => {
             width: '100%',
             padding: '12px',
             margin: '10px 0',
-            border: '2px solid #e0e0e0',
+            border: `2px solid ${darkStyles.border}`,
             borderRadius: '8px',
             fontSize: '16px',
-            fontFamily: 'inherit'
+            fontFamily: 'inherit',
+            background: darkStyles.secondaryBackground,
+            color: darkStyles.text
           }}
         />
         
         <div style={{ margin: '15px 0' }}>
-          <label style={{ display: 'block', marginBottom: '8px', color: '#666' }}>
+          <label style={{ display: 'block', marginBottom: '8px', color: darkStyles.mutedText }}>
             Category:
           </label>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -379,8 +542,8 @@ const Calendar: React.FC = () => {
               style={{
                 flex: 1,
                 padding: '10px',
-                background: selectedCategory === 'work' ? '#3788d8' : '#f0f0f0',
-                color: selectedCategory === 'work' ? 'white' : '#333',
+                background: selectedCategory === 'work' ? '#3788d8' : darkStyles.secondaryBackground,
+                color: selectedCategory === 'work' ? 'white' : darkStyles.text,
                 border: 'none',
                 borderRadius: '8px',
                 cursor: 'pointer',
@@ -394,8 +557,8 @@ const Calendar: React.FC = () => {
               style={{
                 flex: 1,
                 padding: '10px',
-                background: selectedCategory === 'personal' ? '#41b883' : '#f0f0f0',
-                color: selectedCategory === 'personal' ? 'white' : '#333',
+                background: selectedCategory === 'personal' ? '#41b883' : darkStyles.secondaryBackground,
+                color: selectedCategory === 'personal' ? 'white' : darkStyles.text,
                 border: 'none',
                 borderRadius: '8px',
                 cursor: 'pointer',
@@ -409,8 +572,8 @@ const Calendar: React.FC = () => {
               style={{
                 flex: 1,
                 padding: '10px',
-                background: selectedCategory === 'health' ? '#e53e3e' : '#f0f0f0',
-                color: selectedCategory === 'health' ? 'white' : '#333',
+                background: selectedCategory === 'health' ? '#e53e3e' : darkStyles.secondaryBackground,
+                color: selectedCategory === 'health' ? 'white' : darkStyles.text,
                 border: 'none',
                 borderRadius: '8px',
                 cursor: 'pointer',
@@ -427,7 +590,7 @@ const Calendar: React.FC = () => {
           gap: '10px', 
           justifyContent: 'flex-end', 
           marginTop: '20px',
-          borderTop: '1px solid #e0e0e0',
+          borderTop: `1px solid ${darkStyles.border}`,
           paddingTop: '20px'
         }}>
           {selectedEvent && (
@@ -450,8 +613,9 @@ const Calendar: React.FC = () => {
             onClick={() => setModalIsOpen(false)}
             style={{
               padding: '10px 20px',
-              backgroundColor: '#e0e0e0',
-              border: 'none',
+              backgroundColor: darkStyles.secondaryBackground,
+              color: darkStyles.text,
+              border: `1px solid ${darkStyles.border}`,
               borderRadius: '8px',
               cursor: 'pointer'
             }}
